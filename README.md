@@ -1,40 +1,87 @@
 # Debug PHP In Docker
 
-## Intention
+This project is a proof of concept for creating a high-quality, out-of-the-box, development environment for a PHP application.
 
-Create a development environment that supports debugging a PHP application with minimal setup required.
+## Goals
 
-## Requirements
+- [x] No local dependencies other than Docker
+- [x] Run using a single command with no source modifications
+- [x] Changes to the PHP _source_ are reflected immediately and automatically in the PHP service
+- [x] README explains the debugging configuration
+- [x] Debugging works out-of-the-box with VS Code when a PHP debugging extension is installed in the editor
+- [x] The Docker images use common bases for development and production images
+- [ ] The development target of the PHP service runs `composer install` when it's re/started
+- [ ] The production target of the PHP service includes dependencies restored by `composer install`
+- [ ] The application serves API endpoints, server-side rendered HTML pages, and static assets.
 
-- [x] The environment should run with no host dependencies other than Docker compose.
-- [x] The environment should run using a single command with no source modifications.
-- [x] Changes to the PHP _source_ should be reflected by the server on the next request without manual intervention.
-- [ ] The project should document the debug configuration required for a local IDE to debug the application in Docker.
-- [ ] The project should contain a concrete debug configuration for VS Code that works automatically, or with a trivial copy/paste/edit. 
-- [ ] Debugging should not be coupled to a web server choice.
-- [x] The environment should re-use image definitions that can also be the basis of production images.
+## Getting Started
 
-## Docker Images
+Run the following command from the root of the project to start the development environment.
 
-Each [docker image](./images) in the project uses build targets to define a common base, a development image, and a production image. The base targets define everything the development and production images have in common (software versions, configuration, etc.), and the development and production targets define only what makes development and production different from each other (development contains a debugger, production images contain the source but development images need it mounted in at runtime, etc.). This strategy facilitates keeping development and production resources in sync without duplication.
+```sh
+docker compose up -d
+```
+
+## Application
+
+```sh
+# TODO: Make an application that has an API, server-side rendered HTML pages, and some public static assets to POC the HTTP server configurations for routing requests. Likely the best thing to do is put the static assets on the HTTP server and only proxy requests for PHP?
+```
+
+## Composer Updates
+
+```sh
+# TODO: Make the development target of the PHP service run composer install on start so restarting the service will reflect dependency changes with no need to rebuild images or recreate containers.
+```
+
+## Debugging
+
+By default the dev PHP service in the compose environment attempts to connect to a debugger listening on the host at port 9003 for every request. The debug configuration is defined in [images/fpm/xdebug.ini](./images/fpm/xdebug.ini). Changes to the file will be reflected in the dev container immediately, but PHP FPM doesn't watch the config files so the service needs to be restarted for the changes to take effect. The service can be restarted by running the following command from the root of the project.
+
+```sh
+docker compose restart php-dev
+```
+
+The follwing snippet is a VS Code `launch.json` file that will enable listening for debug connections from the app the compose environment.
+
+```json
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Listen for Xdebug",
+            "type": "php",
+            "request": "launch",
+            "port": 9003,
+            "pathMappings": {
+                "/var/www/html": "${workspaceFolder}/src"
+            }
+        }
+    ]
+}
+```
+
+## Docker Image Definitions
+
+Each [docker image](./images) in the project uses build targets to define a common base, a development target, and a production target. The base targets define everything the development and production targets have in common, and the development and production targets define what makes them different. For example; the base target for the PHP application specifies the PHP version and the extensions used by the application, the development target adds a debugger, and the production target copies in the source code (the development target needs the source to be mounted in at runtime). This strategy facilitates keeping development and production resources in sync without duplication.
 
 ## Compose Environment
 
-The compose environment runs the development and production versions of the PHP application, as well as an NGINX and an Apache reverse proxy pointing to each one. The development version of the application runs so that we can connect a debugger and prove it works. The production version runs so we can prove that the build target strategy works. We run multiple servers to prove that we haven't coupled the ability to debug the application to a particular choice of server.
+The compose environment runs the development and production versions of the PHP application, as well as an NGINX ointing to each one. The development version of the application runs so that we can connect a debugger and prove it works. The production version runs so we can prove that the build target strategy works. We run multiple servers to prove that we haven't coupled the ability to debug the application to a particular choice of server.
 
-_NOTE: At the time of writing we do **not** run multiple web servers, but we plan to and we're confident in ourselves._
+```sh
+# TODO: Add Apache reverse proxies
+```
 
 ### Services
 
 ### php
 
-The `php` service is the primary focus of this project. It seeks to meet the stated [Requirements](#requirements) by defining a `bas`e target that serves the PHP application using PHP FPM, installing a debugger and serving a mounted-in version of the source from `php-dev`, and serving a copied-in version of the source from `php-prod`. After running `docker compose up`, requests to `localhost:8080` (`php-dev`) will reflect changes made to [`index.php`](./src/index.php) but requests made to `localhost:8000` (`php-prod`) will not.
-
-A more realistic application would have other considerations like dependencies to be restored or transpilers to be run. In that case we might use an additional `builder` target to house the required tooling, derive the `dev` target from the `builder` target, derive a new `build` target from the `builder` target to produce the production source, then derive `prod` from the `base` target and copy in the built artifact from the `build` target.
+The `php` service serves our PHP application. The development version of the service -- with live reloading and debugging support -- is exposed by [NGINX](#nginx) on port `:8080`. A production version of the application is also available for A/B testing and is exposed by [NGINX](#nginx) on port `:8000`.
 
 ### NGINX
 
-The `nginx` service is a simply reverse proxy to serve our PHP FPM application. There is currently no different between the `dev` and `prod` targets; instead the differences between the `nginx-dev` and `nginx-prod` services are defined via the deployment environment and the `base` target supports the required configuration options.
+The `nginx` service is a reverse proxy to serve our PHP application. There is currently no different between the `dev` and `prod` targets; instead the differences between the `nginx-dev` and `nginx-prod` services are defined via the deployment environment and the `base` target supports the required configuration options.
 
 `PHP_FPM_ADDR`
 : The host and port for the PHP FPM instance that NGINX should proxy requests to.
